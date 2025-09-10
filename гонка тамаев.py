@@ -236,7 +236,7 @@ def create_house_surface():
     # Кирпичная текстура
     for i in range(0, 80, 10):
         for j in range(30, 80, 5):
-            pygame.draw.rect(surface, (180, 0, 0 if (i+j) % 20 == 0 else 150, 0, 0), (i, j, 10, 5), 1)
+            pygame.draw.rect(surface, (180, 0, 0) if (i+j) % 20 == 0 else (150, 0, 0), (i, j, 10, 5), 1)
     # Крыша
     pygame.draw.polygon(surface, BROWN, [(0, 30), (40, 0), (80, 30)])
     # Черепица
@@ -565,7 +565,7 @@ class Game:
                 pygame.draw.circle(screen, WHITE, (x, y), 20)
                 pygame.draw.circle(screen, WHITE, (x+15, y-10), 15)
                 pygame.draw.circle(screen, WHITE, (x+30, y), 20)
-                pygame.draw.circle(screen, WHITE, (x+15, y+10), 15)
+                pygame.draw.circle(surface, WHITE, (x+15, y+10), 15)
         
         elif self.time_of_day == "sunset":
             # Закатное небо
@@ -586,6 +586,174 @@ class Game:
         road_left = (SCREEN_WIDTH - ROAD_WIDTH) // 2
         pygame.draw.rect(screen, DARK_GRAY, (road_left, 0, ROAD_WIDTH, SCREEN_HEIGHT))
         
-        # Рисуем линии разметки
+         # Рисуем линии разметки
         for line in self.road_lines:
-            pygame
+            pygame.draw.rect(screen, YELLOW, (line["x"], line["y"], line["width"], line["height"]))
+    
+    def update(self):
+        if self.game_over or self.win:
+            return
+            
+        # Увеличиваем скорость машины со временем
+        self.car.increase_speed()
+        
+        # Обновляем линии разметки
+        self.update_road_lines()
+        
+        # Спавн людей
+        self.spawn_timer += 1
+        if self.spawn_timer > 60 - min(self.level * 5, 50):  # Чаще с увеличением уровня
+            self.people.append(Person())
+            self.spawn_timer = 0
+        
+        # Спавн коробок
+        self.box_spawn_timer += 1
+        if self.box_spawn_timer > 120 - min(self.level * 10, 100):
+            self.boxes.append(Box())
+            self.box_spawn_timer = 0
+        
+        # Спавн декораций
+        self.decoration_timer += 1
+        if self.decoration_timer > 90:
+            deco_type = random.choice(["tree", "house", "rocket"])
+            side = random.choice(["left", "right"])
+            self.decorations.append(Decoration(deco_type, side))
+            self.decoration_timer = 0
+        
+        # Обновляем людей
+        for person in self.people[:]:
+            person.update()
+            if person.check_collision(self.car):
+                self.score += 1
+                if self.score >= self.target:
+                    self.level_up()
+            if person.y > SCREEN_HEIGHT:
+                self.people.remove(person)
+        
+        # Обновляем коробки
+        for box in self.boxes[:]:
+            box.update()
+            if box.check_collision(self.car):
+                self.game_over = True
+            if box.is_off_screen():
+                self.boxes.remove(box)
+        
+        # Обновляем декорации
+        for decoration in self.decorations[:]:
+            decoration.update()
+            if decoration.is_off_screen():
+                self.decorations.remove(decoration)
+    
+    def level_up(self):
+        self.level += 1
+        self.target = self.level * 10
+        if self.level > 5:  # Максимум 5 уровней
+            self.win = True
+    
+    def draw(self):
+        # Рисуем небо
+        self.draw_sky()
+        
+        # Рисуем дорогу
+        self.draw_road()
+        
+        # Рисуем декорации
+        for decoration in self.decorations:
+            decoration.draw()
+        
+        # Рисуем машину
+        self.car.draw()
+        
+        # Рисуем людей
+        for person in self.people:
+            person.draw()
+        
+        # Рисуем коробки
+        for box in self.boxes:
+            box.draw()
+        
+        # Рисуем UI
+        font = pygame.font.SysFont(None, 36)
+        score_text = font.render(f"Счёт: {self.score}/{self.target}", True, BLACK)
+        level_text = font.render(f"Уровень: {self.level}", True, BLACK)
+        speed_text = font.render(f"Скорость: {int(self.car.speed)}", True, BLACK)
+        
+        screen.blit(score_text, (10, 10))
+        screen.blit(level_text, (10, 50))
+        screen.blit(speed_text, (10, 90))
+        
+        if self.game_over:
+            font = pygame.font.SysFont(None, 72)
+            game_over_text = font.render("ИГРА ОКОНЧЕНА!", True, RED)
+            screen.blit(game_over_text, (SCREEN_WIDTH//2 - game_over_text.get_width()//2, SCREEN_HEIGHT//2 - 50))
+            
+            font = pygame.font.SysFont(None, 36)
+            restart_text = font.render("Нажмите R для перезапуска", True, BLACK)
+            screen.blit(restart_text, (SCREEN_WIDTH//2 - restart_text.get_width()//2, SCREEN_HEIGHT//2 + 20))
+        
+        if self.win:
+            font = pygame.font.SysFont(None, 72)
+            win_text = font.render("ПОБЕДА!", True, GREEN)
+            screen.blit(win_text, (SCREEN_WIDTH//2 - win_text.get_width()//2, SCREEN_HEIGHT//2 - 50))
+            
+            font = pygame.font.SysFont(None, 36)
+            restart_text = font.render("Нажмите R для перезапуска", True, BLACK)
+            screen.blit(restart_text, (SCREEN_WIDTH//2 - restart_text.get_width()//2, SCREEN_HEIGHT//2 + 20))
+
+# Основная функция игры
+def main():
+    # Сначала показываем экран выбора машины
+    car_selection = CarSelection()
+    selection_made = False
+    selected_car = None
+    
+    while not selection_made:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            
+            result = car_selection.handle_input(event)
+            if result:
+                selected_car = result
+                selection_made = True
+        
+        car_selection.draw()
+        pygame.display.flip()
+        clock.tick(60)
+    
+    # Запускаем игру с выбранными параметрами
+    game = Game(selected_car["car_type"], selected_car["car_color"], selected_car["time_of_day"])
+    
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r and (game.game_over or game.win):
+                    # Перезапуск игры
+                    game = Game(selected_car["car_type"], selected_car["car_color"], selected_car["time_of_day"])
+        
+        # Управление машиной
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT]:
+            game.car.move("left")
+        if keys[pygame.K_RIGHT]:
+            game.car.move("right")
+        
+        # Обновление игры
+        game.update()
+        
+        # Отрисовка
+        game.draw()
+        
+        pygame.display.flip()
+        clock.tick(60)
+    
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
